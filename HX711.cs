@@ -4,14 +4,80 @@ namespace Microsoft.Maker.Devices.Hx711
 {
     public sealed class Hx711
     {
+        private int clockPinNumber;
+        private int dataPinNumber;
         private GpioPin clockPin;
         private GpioPin dataPin;
 
-        public Hx711(GpioPin clockPin, GpioPin dataPin)
+        /// <summary>
+        /// Used to signal that the device is properly initialized and ready to use
+        /// </summary>
+        private bool available = false;
+
+        public Hx711(int clockPinNumber, int dataPinNumber)
         {
-            this.clockPin = clockPin;
-            this.dataPin = dataPin;
+            this.clockPinNumber = clockPinNumber;
+            this.dataPinNumber = dataPinNumber;
+        }
+
+        /// <summary>
+        /// Initialize the load sensing device.
+        /// </summary> 
+        /// <returns>
+        /// Async operation object.
+        /// </returns>
+        public bool Begin()
+        {
+            /*
+                * Acquire the GPIO controller
+                * MSDN GPIO Reference: https://msdn.microsoft.com/en-us/library/windows/apps/windows.devices.gpio.aspx
+                * 
+                * Get the default GpioController
+                */
+            GpioController gpio = GpioController.GetDefault();
+
+            /*
+                * Test to see if the GPIO controller is available.
+                *
+                * If the GPIO controller is not available, this is
+                * a good indicator the app has been deployed to a
+                * computing environment that is not capable of
+                * controlling the weather shield. Therefore we
+                * will disable the weather shield functionality to
+                * handle the failure case gracefully. This allows
+                * the invoking application to remain deployable
+                * across the Universal Windows Platform.
+                */
+            if (null == gpio)
+            {
+                available = false;
+                return false;
+            }
+
+            /*
+                * Initialize the blue LED and set to "off"
+                *
+                * Instantiate the blue LED pin object
+                * Write the GPIO pin value of low on the pin
+                * Set the GPIO pin drive mode to output
+                */
+            clockPin = gpio.OpenPin(clockPinNumber, GpioSharingMode.Exclusive);
+            clockPin.Write(GpioPinValue.Low);
             clockPin.SetDriveMode(GpioPinDriveMode.Output);
+
+            /*
+                * Initialize the green LED and set to "off"
+                * 
+                * Instantiate the green LED pin object
+                * Write the GPIO pin value of low on the pin
+                * Set the GPIO pin drive mode to output
+                */
+            dataPin = gpio.OpenPin(dataPinNumber, GpioSharingMode.Exclusive);
+            dataPin.Write(GpioPinValue.Low);
+            dataPin.SetDriveMode(GpioPinDriveMode.Input);
+
+            available = true;
+            return true;
         }
 
         public double Grams
@@ -19,6 +85,8 @@ namespace Microsoft.Maker.Devices.Hx711
             private set { }
             get
             {
+                if (!available) { return 0.0f; }
+                //TODO: Figure out how mystic ADC units converts to Grams
                 return ReadData();
             }
         }
