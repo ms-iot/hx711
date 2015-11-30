@@ -98,30 +98,55 @@ namespace Microsoft.Maker.Devices.Hx711
         //        76543210 54321098 32109876
         private int ReadData()
         {
-            uint data = 0;
-            byte[] rawData = new byte[3];
+            uint value = 0;
+            byte[] data = new byte[3];
+            byte filler = 0x00;
 
             // Clock in data
             for (int i = 2; i >= 0; --i)
             {
-                rawData[i] = ShiftIn();
+                data[i] = ShiftInByte();
             }
-            data = (uint)((rawData[2] << 16) | (rawData[1] << 8) | rawData[0]);
 
-            // Data is returned in 2's compliment
-            // https://cdn.sparkfun.com/datasheets/Sensors/ForceFlex/hx711_english.pdf
-            data = ~data + 1;
+            // Clock in gain of 128 for next reading
+            clockPin.Write(GpioPinValue.High);
+            clockPin.Write(GpioPinValue.Low);
 
             // Because "bodge" did it...
             // data ^= 0x800000;
 
-            clockPin.Write(GpioPinValue.High);
-            clockPin.Write(GpioPinValue.Low);
+            // Datasheet indicates the value is returned as a two's complement value
+            // https://cdn.sparkfun.com/datasheets/Sensors/ForceFlex/hx711_english.pdf
+            // Flip all the bits
+            data[2] = (byte)~data[2];
+            data[1] = (byte)~data[1];
+            data[0] = (byte)~data[0];
 
-            return (int)data;
+            // Replicate the most significant bit to pad out a 32-bit signed integer
+            if ( 0x80 == (data[2] & 0x80) )
+            {
+                filler = 0xFF;
+            }
+            else if ((0x7F == data[2]) && (0xFF == data[1]) && (0xFF == data[0]))
+            {
+                filler = 0xFF;
+            }
+            else
+            {
+                filler = 0x00;
+            }
+
+            // Construct a 32-bit signed integer
+            value = (uint)( filler << 24
+                    | data[2] << 16
+                    | data[1] << 8
+                    | data[0] );
+
+            // ... and add 1
+            return (int)(++value);
         }
 
-        private byte ShiftIn()
+        private byte ShiftInByte()
         {
             byte value = 0x00;
             dataPin.SetDriveMode(GpioPinDriveMode.Input);
